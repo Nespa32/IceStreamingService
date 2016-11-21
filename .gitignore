@@ -2,3 +2,5 @@
 *~
 *#
 build/*
+PortalInterface.cpp
+PortalInterface.h
