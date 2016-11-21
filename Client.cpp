@@ -41,6 +41,8 @@ void CLIClient::run()
 
     _streams = _portal->GetStreamList();
 
+    printf("Connected, press help for a command list\n");
+
     while (true)
     {
         std::istringstream iss;
@@ -59,12 +61,22 @@ void CLIClient::run()
                 std::getline(iss, command, ' ');
         }
 
-        if (command == "list")
+        if (command == "help")
         {
-            for (StreamList::const_iterator itr = _streams.begin(); itr != _streams.end(); ++itr)
+            printf("All commands can be preceded by 'stream'\n");
+            printf("help                - print this message\n");
+            printf("list                - list all streams\n");
+            printf("search $keywords    - list for streams with matching keywords\n");
+            printf("play $stream_name   - play stream with matching name\n");
+        }
+        else if (command == "list")
+        {
+            printf("There are %zu streams active\n", _streams.size());
+            for (size_t i = 0; i < _streams.size(); ++i)
             {
-                StreamEntry const& entry = *itr;
-                // @todo: print
+                StreamEntry const& entry = _streams[i];
+                printf("- name: %s video size: %s bit rate: %d\n",
+                    entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
             }
         }
         else if (command == "search")
@@ -76,10 +88,21 @@ void CLIClient::run()
                 for (StreamList::const_iterator itr = _streams.begin(); itr != _streams.end(); ++itr)
                 {
                     StreamEntry const& entry = *itr;
-                    // @todo: grep through using keyword
-                    if (true)
-                        matches["asd"] = &entry;
+                    for (size_t i = 0; i < entry.keyword.size(); ++i)
+                    {
+                        std::string const& entryKeyword = entry.keyword[i];
+                        if (entryKeyword.find(keyword) != std::string::npos)
+                            matches[entry.streamName] = &entry;
+                    }
                 }
+            }
+
+            printf("There are %zu streams matches\n", _streams.size());
+            for (std::map<std::string, StreamEntry const*>::const_iterator itr = matches.begin(); itr != matches.end(); ++itr)
+            {
+                StreamEntry const& entry = *itr->second;
+                printf("- name: %s video size: %s bit rate: %d\n",
+                    entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
             }
         }
         else if (command == "play")
@@ -91,8 +114,7 @@ void CLIClient::run()
             for (StreamList::const_iterator itr = _streams.begin(); itr != _streams.end(); ++itr)
             {
                 StreamEntry const& entry = *itr;
-                // @todo: search and play
-                if (true)
+                if (streamName == entry.streamName)
                 {
                     entryToPlay = &entry;
                     break;
