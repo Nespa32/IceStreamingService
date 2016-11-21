@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <string>
 #include <sstream>
@@ -6,11 +5,7 @@
 #include <map>
 
 #include <Ice/Ice.h>
-// #include "PortalInterface.h"
 #include "Client.h"
-
-// @todo: remove later
-namespace StreamingService { };
 
 using namespace StreamingService;
 
@@ -18,7 +13,7 @@ int main(int argc, char** argv)
 {
     Ice::CommunicatorPtr ic = Ice::initialize(argc, argv);
 
-    std::string const portalId = "asd -p 10000";
+    std::string const portalId = "Portal:default -p 10000";
 
     CLIClient client(portalId, ic);
     client.run();
@@ -29,10 +24,9 @@ int main(int argc, char** argv)
 
 CLIClient::CLIClient(std::string const& portalId, Ice::CommunicatorPtr ic)
 {
-    // Ice::ObjectPrx base = ic->stringToProxy(portalId);
+    Ice::ObjectPrx base = ic->stringToProxy(portalId);
 
-    // _portal = PortalInterfacePrx::checkedCast(base);
-    _portal = nullptr;
+    _portal = PortalInterfacePrx::checkedCast(base);
 }
 
 CLIClient::~CLIClient() { }
@@ -42,10 +36,10 @@ void CLIClient::run()
     if (!_portal)
     {
         printf("CLIClient::run - portal not found\n");
-        // return;
+        return;
     }
 
-    // _streamList = portal->GetStreamList();
+    _streams = _portal->GetStreamList();
 
     while (true)
     {

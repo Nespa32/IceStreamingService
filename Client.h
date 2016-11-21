@@ -1,17 +1,9 @@
 #include <string.h>
-// #include "PortalInterface.h>
+
 #include "Define.h"
+#include "PortalInterface.h"
 
-// @todo: remove when PortalInterface included
-struct StreamEntry
-{
-    int x[10];
-};
-
-// @todo: remove
-class PortalInterface;
-typedef PortalInterface* PortalInterfacePrx;
-typedef std::vector<StreamEntry> StreamList;
+using namespace StreamingService;
 
 class CLIClient
 {
