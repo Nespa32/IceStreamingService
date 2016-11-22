@@ -4,6 +4,12 @@
 #include <istream>
 #include <map>
 
+// for fork/exec/open
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <Ice/Ice.h>
 #include "Client.h"
 
@@ -123,7 +129,17 @@ void CLIClient::run()
 
             if (entryToPlay)
             {
-                // @todo: ffplay logic
+                // launch ffplay instance
+                if (fork() == 0)
+                {
+                    // but redirect ffplay output to /dev/null
+                    int fd = open("/dev/null", O_WRONLY);
+                    dup2(fd, STDOUT_FILENO);
+                    dup2(fd, STDERR_FILENO);
+                    close(fd);
+
+                    execlp("ffplay", "ffplay", entryToPlay->endpoint.c_str(), NULL);
+                }
             }
             else
             {
