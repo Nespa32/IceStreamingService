@@ -8,13 +8,11 @@ Portal::Portal()
 
 void Portal::NewStream(StreamEntry const& entry, const ::Ice::Current&)
 {
-    printf("New\n");
     _streamRegistry.push_back(entry);
 }
 
 void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
 {
-    printf("Closing\n");
     std::vector<StreamEntry>::iterator itr;
     for (itr = _streamRegistry.begin(); itr != _streamRegistry.end(); ++itr)
     {
