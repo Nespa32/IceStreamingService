@@ -35,15 +35,14 @@ int main(int argc, char* argv[])
     signal(SIGINT, onExit);
 
     // Launch ffmpeg (ex: port 13000)
-
     pid_t pid;
     pid = fork();
 
     if (pid == 0)
         execlp("./../ffmpeg.sh", "ffmpeg.sh", "../PopeyeAliBaba_512kb.mp4",
               "tcp://127.0.0.1:13000", "420x320", "400k", NULL);
-    //    if (pid == 0)
-    //    execl("../ffmpeg.sh", argv[6], argv[7], argv[8], argv[9], NULL);
+    // Wait for ffmpeg setup before trying to read
+    sleep(10);
 
     // Sockets for streamer-ffmpeg connection
 
@@ -51,7 +50,7 @@ int main(int argc, char* argv[])
     struct sockaddr_in ffmpegAddr;
     struct hostent *server;
 
-    char ffmpegBuffer[256];
+    char ffmpegBuffer[256]; //188
 
     ffmpegSockFD = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -66,18 +65,6 @@ int main(int argc, char* argv[])
 
     connect(ffmpegSockFD, (struct sockaddr *) &ffmpegAddr,
             sizeof(ffmpegAddr));
-
-    bzero (ffmpegBuffer, 256);
-
-    read(ffmpegSockFD, ffmpegBuffer, 256);
-
-    for (int i = 0; i < 256; ++i)
-        printf("%02x\n", ffmpegBuffer[i]);
-
-    close(ffmpegSockFD);
-
-
-
 
     // Sockets for client-streamer connection
 
@@ -103,19 +90,16 @@ int main(int argc, char* argv[])
     newSockFD = accept(sockFD,
                        (struct sockaddr *)&clientAddr,
                        &clilen);
-    /*
+    // Sending from ffmpeg to client
     while (1)
     {
-        bzero(buffer, 256);
-
-        int n = read(newSockFD, buffer, 255);
-        buffer[255] = '\0';
-
-        printf("%s\n", buffer);
+        bzero (ffmpegBuffer, 256);
+        ssize_t n = read (ffmpegSockFD, ffmpegBuffer, 256);
+        write (newSockFD, ffmpegBuffer, n);
     }
-    */
 
     close(sockFD);
+    close(ffmpegSockFD);
 
     onExit(0);
     return 0;
