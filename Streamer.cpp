@@ -198,9 +198,16 @@ void Streamer::Close()
     }
 
     if (_listenSocketFd > 0)
+    {
+        shutdown(_listenSocketFd, SHUT_RDWR);
         close(_listenSocketFd);
+    }
+
     if (_ffmpegSocketFd > 0)
+    {
+        shutdown(_ffmpegSocketFd, SHUT_RDWR);
         close(_ffmpegSocketFd);
+    }
 
     if (_portal)
         _portal->CloseStream(_streamEntry);
@@ -286,6 +293,7 @@ void Streamer::Run(int tickTime)
 
                     size_t offset = BUFFER_SIZE - remaining;
                     ssize_t n = read(_ffmpegSocketFd, buffer + offset, remaining);
+                    printf("Read from %lu to %lu\n", buffer + offset - ringBuffer, buffer + offset - ringBuffer + n);
                     remaining -= n;
                 }
 
