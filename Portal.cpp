@@ -32,7 +32,6 @@ StreamList Portal::GetStreamList(const ::Ice::Current&)
 
 int main(int argc, char* argv[])
 {
-    int status = 0;
     Ice::CommunicatorPtr ic = Ice::initialize(argc, argv);
     Ice::ObjectAdapterPtr adapter =
         ic->createObjectAdapterWithEndpoints("Portal", "default -p 10000");

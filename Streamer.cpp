@@ -80,7 +80,7 @@ int main(int argc, char* argv[])
         else
         {
             LOG_ERROR("Streamer initialization failed");
-            return 1;
+            exitCode = 1;
         }
 
         // close and cleanup
@@ -91,8 +91,7 @@ int main(int argc, char* argv[])
 
     ic->destroy();
 
-    exit(0);
-    return 0;
+    return exitCode;
 }
 
 void exitHandler(int /*signal*/)
@@ -104,8 +103,9 @@ void exitHandler(int /*signal*/)
 
 Streamer::Streamer(std::string const& portalId, Ice::CommunicatorPtr ic,
     StreamEntry const& streamEntry, int listenPort, int ffmpegPort, int byteRate) :
-    _streamEntry(streamEntry), _listenPort(listenPort), _ffmpegPort(ffmpegPort),
-    _byteRate(byteRate), _listenSocketFd(0), _ffmpegSocketFd(0), _forceExit(false)
+    _listenPort(listenPort), _ffmpegPort(ffmpegPort), _byteRate(byteRate),
+     _streamEntry(streamEntry), _listenSocketFd(0), _ffmpegSocketFd(0),
+    _forceExit(false)
 {
    Ice::ObjectPrx base = ic->stringToProxy(portalId);
 
@@ -257,7 +257,7 @@ void Streamer::Run(int tickTime)
         {
             _clientList.push_back(clientSocket);
 
-            for (int i = 0; i < bufferLen; i += BUFFER_SIZE)
+            for (size_t i = 0; i < bufferLen; i += BUFFER_SIZE)
             {
                 char* buffer = (char*)(ringBuffer + (bufferPtr + i) % bufferLen);
                 if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
