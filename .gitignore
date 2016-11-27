@@ -1,6 +1,7 @@
 *.o
 *~
 *#
+*.#
 build/*
 PortalInterface.cpp
 PortalInterface.h
