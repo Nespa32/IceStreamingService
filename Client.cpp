@@ -10,8 +10,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <Ice/Ice.h>
 #include "Client.h"
+#include "Util.h"
 
 using namespace StreamingService;
 
@@ -22,7 +22,7 @@ int main(int argc, char** argv)
     std::string const portalId = "Portal:default -p 10000";
 
     CLIClient client(portalId, ic);
-    client.run();
+    client.Run();
 
     ic->destroy();
     return 0;
@@ -37,7 +37,7 @@ CLIClient::CLIClient(std::string const& portalId, Ice::CommunicatorPtr ic)
 
 CLIClient::~CLIClient() { }
 
-void CLIClient::run()
+void CLIClient::Run()
 {
     if (!_portal)
     {

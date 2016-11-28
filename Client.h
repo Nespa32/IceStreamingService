@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include "Define.h"
+#include <Ice/Ice.h>
 #include "PortalInterface.h"
 
 using namespace StreamingService;
@@ -11,7 +11,7 @@ public:
     explicit CLIClient(std::string const& portalId, Ice::CommunicatorPtr ic);
     ~CLIClient();
 
-    void run();
+    void Run();
 
 private:
     PortalInterfacePrx _portal;
