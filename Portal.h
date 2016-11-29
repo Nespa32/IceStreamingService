@@ -5,12 +5,11 @@
 
 using namespace StreamingService;
 
-class Portal : public PortalInterface, public IceUtil::Mutex
+class Portal : public PortalInterface
 {
  public:
-    Portal(const IceStorm::TopicPrx&);
+    Portal();
 
-    virtual void unsubscribe(const )
     void NewStream(StreamEntry const& entry, const ::Ice::Current&) override;
     void CloseStream(StreamEntry const& entry, const ::Ice::Current&) override;
 
