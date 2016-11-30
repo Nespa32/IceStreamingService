@@ -1,6 +1,6 @@
 #!/bin/bash
 
-ffmpeg -i $1 -loglevel warning \
+ffmpeg -re -i $1 -loglevel warning \
 -analyzeduration 500k -probesize 500k -framerate 30 -video_size $3 \
 -codec:v libx264 -preset ultrafast -pix_fmt yuv420p \
 -tune zerolatency -preset ultrafast -b:v $4 -g 30 \

@@ -43,9 +43,6 @@ int main(int argc, char* argv[])
 
     int listenPort = 11000;
     int ffmpegPort = 13000;
-    int byteRate = bitRate / 8;
-    byteRate *= 4; // @todo: byte rate is weird for x264
-    int tickTime = 100; // how often streamer should send data, in milliseconds
 
     StreamEntry streamEntry;
     streamEntry.streamName = argv[1];
@@ -68,14 +65,13 @@ int main(int argc, char* argv[])
 
     // actual stream logic
     {
-        sStreamer = new Streamer(portalId, ic, streamEntry,
-            listenPort, ffmpegPort, byteRate);
+        sStreamer = new Streamer(portalId, ic, streamEntry, listenPort, ffmpegPort);
 
         // open listen port, start ffmpeg
         if (sStreamer->Initialize())
         {
             // start stream
-            sStreamer->Run(tickTime);
+            sStreamer->Run();
         }
         else
         {
@@ -102,8 +98,8 @@ void exitHandler(int /*signal*/)
 }
 
 Streamer::Streamer(std::string const& portalId, Ice::CommunicatorPtr ic,
-    StreamEntry const& streamEntry, int listenPort, int ffmpegPort, int byteRate) :
-    _listenPort(listenPort), _ffmpegPort(ffmpegPort), _byteRate(byteRate),
+    StreamEntry const& streamEntry, int listenPort, int ffmpegPort) :
+    _listenPort(listenPort), _ffmpegPort(ffmpegPort),
      _streamEntry(streamEntry), _listenSocketFd(0), _ffmpegSocketFd(0),
     _forceExit(false)
 {
@@ -213,116 +209,65 @@ void Streamer::Close()
         _portal->CloseStream(_streamEntry);
 }
 
-void Streamer::Run(int tickTime)
+void Streamer::Run()
 {
-    long bufferSecs = 10;
-
-    size_t bufferLen = 0;
-    // initialize ring buffer, has some quirks
-    {
-        bufferLen = _byteRate * bufferSecs;
-        // bufferLen must be % BUFFER_SIZE
-        bufferLen += BUFFER_SIZE - (bufferLen % BUFFER_SIZE);
-    }
-
-    printf("ByteRate %d, ring buffer size %lu (%lu secs of buffering)\n",
-        _byteRate, bufferLen, bufferSecs);
-
-    size_t bufferPtr = 0;
-    char* ringBuffer = new char[bufferLen];
-
-    // ring buffer must be fully initialized before first client is accepted
-    for (size_t i = 0; i < bufferLen; i += BUFFER_SIZE)
-    {
-        ssize_t remaining = BUFFER_SIZE;
-        while (remaining > 0)
-        {
-            if (_forceExit)
-                return;
-
-            size_t offset = BUFFER_SIZE - remaining;
-            char* buffer = (char*)(ringBuffer + i + offset);
-            ssize_t n = read(_ffmpegSocketFd, buffer, remaining);
-            remaining -= n;
-        }
-    }
-
     printf("Streamer ready\n");
 
-    long lastTickTime = getMSTime();
+    long const sleepTime = 20; // 20ms sleep time per cycle
+    long const tickTimer = 30; // 30ms for sending data per cycle
 
     while (true)
     {
-        if (_forceExit)
-            break;
-
-        long timeBeforeTick = getMSTime();
-        long diff = timeBeforeTick - lastTickTime;
-
+        // periodically accept new clients
         int clientSocket = accept4(_listenSocketFd, NULL, NULL, SOCK_NONBLOCK);
         if (clientSocket > 0)
         {
             _clientList.push_back(clientSocket);
-
-            for (size_t i = 0; i < bufferLen; i += BUFFER_SIZE)
-            {
-                char* buffer = (char*)(ringBuffer + (bufferPtr + i) % bufferLen);
-                if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
-                {
-                    fprintf(stderr, "Write failure on client accept\n");
-                    break;
-                }
-            }
-
             printf("New client fd = %d\n", clientSocket);
         }
 
-        if (diff)
+        usleep(sleepTime * 1e3); // wait a bit so there's some data to send
+
+        long timeBeforeTick = getMSTime();
+
+        // read from ffmpeg and send data
+        // ffmpeg will produce data to be read at the right video play speed
+        while (true)
         {
-            long bytesToSend = long((_byteRate / 1000.0f) * diff);
-            printf("byteRate %u, bytesToSend %lu, diff %lu\n",
-                _byteRate, bytesToSend, diff);
-            for (int i = 0; i < bytesToSend; i += BUFFER_SIZE)
+            char buffer[BUFFER_SIZE];
+            ssize_t remaining = BUFFER_SIZE;
+            while (remaining > 0)
             {
-                char* buffer = (char*)(ringBuffer + (bufferPtr + i) % bufferLen);
-                ssize_t remaining = BUFFER_SIZE;
-                while (remaining > 0)
-                {
-                    if (_forceExit)
-                        return;
+                if (_forceExit)
+                    return;
 
-                    size_t offset = BUFFER_SIZE - remaining;
-                    ssize_t n = read(_ffmpegSocketFd, buffer + offset, remaining);
-                    printf("Read from %lu to %lu\n", buffer + offset - ringBuffer, buffer + offset - ringBuffer + n);
-                    remaining -= n;
+                size_t offset = BUFFER_SIZE - remaining;
+                ssize_t n = read(_ffmpegSocketFd, buffer + offset, remaining);
+                if (n < 0)
+                {
+                    LOG_ERROR("ffmpeg socket read failed");
+                    return;
                 }
 
-                for (std::list<int>::iterator itr = _clientList.begin(); itr != _clientList.end();)
-                {
-                    int clientSocket = *itr;
-                    if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
-                    {
-                        printf("Error connecting to fd %d\n", clientSocket);
-                        itr = _clientList.erase(itr);
-                        continue;
-                    }
-
-                    ++itr;
-                }
+                remaining -= n;
             }
+
+            // send data to all clients, remove clients with invalid/closed sockets
+            _clientList.remove_if([buffer](int clientSocket)
+            {
+                if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
+                {
+                    LOG_ERROR("Write error for client socket %d", clientSocket);
+                    return true;
+                }
+
+                return false;
+            });
+
+            // break out of send cycle and accept new clients if a tick has passed
+            long now = getMSTime();
+            if (now - timeBeforeTick > tickTimer)
+                break;
         }
-
-        long timeAfterTick = getMSTime();
-        long tickDuration = timeAfterTick - timeBeforeTick;
-
-        lastTickTime = timeBeforeTick;
-
-        if (tickDuration >= tickTime)
-            continue;
-
-        long sleepTime = tickTime - tickDuration;
-        usleep(sleepTime * 1e3); // takes microsecs as arg
     }
-
-    delete ringBuffer;
 }
