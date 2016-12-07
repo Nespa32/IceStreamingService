@@ -21,4 +21,8 @@ module StreamingService
         // For clients
         StreamList GetStreamList();
     };
+    interface StreamNotifierInterface
+    {       
+        void Notify(string notification);
+    };
 };

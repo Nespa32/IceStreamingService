@@ -13,36 +13,60 @@
 #include "Client.h"
 #include "Util.h"
 
+#include <IceStorm/IceStorm.h>
+#include <IceUtil/IceUtil.h>
+
 using namespace StreamingService;
+
+class StreamNotifier : public StreamNotifierInterface
+{
+public:
+    void Notify(const std::string& notification, const Ice::Current&) override
+    {
+        std::cout << notification << '\n';
+    }
+};
 
 int main(int argc, char** argv)
 {
-    Ice::CommunicatorPtr ic = Ice::initialize(argc, argv);
-
     std::string const portalId = "Portal:default -p 10000";
-
-    CLIClient client(portalId, ic);
-    client.Run();
-
-    ic->destroy();
-    return 0;
+    CLIClient app(portalId);
+    return app.main(argc, argv, "config.sub");
 }
 
-CLIClient::CLIClient(std::string const& portalId, Ice::CommunicatorPtr ic)
+CLIClient::CLIClient(std::string const& portalId)
 {
-    Ice::ObjectPrx base = ic->stringToProxy(portalId);
-
-    _portal = PortalInterfacePrx::checkedCast(base);
+    _portalId = portalId;
 }
 
 CLIClient::~CLIClient() { }
 
-void CLIClient::Run()
+int CLIClient::run(int argc, char* argv[])
 {
+    Ice::ObjectPrx base = communicator()->stringToProxy(_portalId);
+    _portal = PortalInterfacePrx::checkedCast(base);
+    //IceStorm stuff
+    Ice::StringSeq args = Ice::argsToStringSeq(argc, argv);
+    args = communicator()->getProperties()->parseCommandLineOptions("Notifier", args);
+    Ice::stringSeqToArgs(args, argc, argv);
+    IceStorm::TopicManagerPrx manager =
+        IceStorm::TopicManagerPrx::checkedCast(
+                                               communicator()->propertyToProxy("TopicManager.Proxy"));
+    IceStorm::TopicPrx topic;
+    topic = manager->retrieve("stream");
+    Ice::ObjectAdapterPtr adapter = communicator()->createObjectAdapter("Notifier.Subscriber");
+    Ice::Identity subId;
+    subId.name = IceUtil::generateUUID();
+    Ice::ObjectPrx subscriber = adapter->add(new StreamNotifier, subId);
+    adapter->activate();
+    IceStorm::QoS qos;
+    topic->subscribeAndGetPublisher(qos, subscriber);
+    //IceStorm stuff
+
     if (!_portal)
     {
         printf("CLIClient::run - portal not found\n");
-        return;
+        return 0;
     }
 
     _streams = _portal->GetStreamList();
@@ -153,4 +177,6 @@ void CLIClient::Run()
                 printf("Unrecognised command '%s'\n", command.c_str());
         }
     }
+    topic->unsubscribe(subscriber);
+    return 0;
 }

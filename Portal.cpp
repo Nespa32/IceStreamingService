@@ -1,5 +1,8 @@
 #include "Portal.h"
 
+#include <IceUtil/IceUtil.h>
+#include <IceStorm/IceStorm.h>
+
 using namespace StreamingService;
 
 Portal::Portal()
@@ -9,6 +12,10 @@ Portal::Portal()
 void Portal::NewStream(StreamEntry const& entry, const ::Ice::Current&)
 {
     _streamRegistry.push_back(entry);
+    if (!_streamNotifier)
+        printf("No Notifier\n");
+    else
+        _streamNotifier->Notify("New Stream\n");
 }
 
 void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
@@ -19,6 +26,7 @@ void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
         StreamEntry const& streamEntry = *itr;
         if (streamEntry.streamName == entry.streamName)
         {
+            _streamNotifier->Notify("Deleted Stream\n");
             _streamRegistry.erase(itr);
             break;
         }
@@ -32,14 +40,35 @@ StreamList Portal::GetStreamList(const ::Ice::Current&)
 
 int main(int argc, char* argv[])
 {
-    Ice::CommunicatorPtr ic = Ice::initialize(argc, argv);
+    Portal app;
+    return app.main(argc, argv, "config.pub");
+}
+
+int
+Portal::run(int argc, char* argv[])
+{
     Ice::ObjectAdapterPtr adapter =
-        ic->createObjectAdapterWithEndpoints("Portal", "default -p 10000");
+        communicator()->createObjectAdapterWithEndpoints("Portal", "default -p 10000");
     Ice::ObjectPtr object = new Portal;
-    adapter->add(object, ic->stringToIdentity("Portal"));
+    adapter->add(object, communicator()->stringToIdentity("Portal"));
     adapter->activate();
-    ic->waitForShutdown();
-    ic->destroy();
+
+    IceStorm::TopicManagerPrx manager =
+        IceStorm::TopicManagerPrx::checkedCast(communicator()->propertyToProxy("TopicManager.Proxy"));
+    IceStorm::TopicPrx topic;
+    try
+    {
+        topic = manager->retrieve("stream");
+    }
+    catch(const IceStorm::NoSuchTopic&)
+    {
+        topic = manager->create("stream");
+    }
+
+    Ice::ObjectPrx publisher = topic->getPublisher();
+    _streamNotifier = StreamNotifierInterfacePrx::uncheckedCast(publisher);
+
+    communicator()->waitForShutdown();
 
     return 0;
 }

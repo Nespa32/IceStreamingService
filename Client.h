@@ -5,15 +5,16 @@
 
 using namespace StreamingService;
 
-class CLIClient
+class CLIClient : public Ice::Application
 {
 public:
-    explicit CLIClient(std::string const& portalId, Ice::CommunicatorPtr ic);
+    explicit CLIClient(std::string const& portalId);
     ~CLIClient();
 
-    void Run();
+    int run(int argc, char* argv[]) override;
 
 private:
+    std::string _portalId;
     PortalInterfacePrx _portal;
     StreamList _streams;
 };
