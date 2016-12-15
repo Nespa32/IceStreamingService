@@ -5,21 +5,26 @@
 
 using namespace StreamingService;
 
-Portal::Portal()
+int main(int argc, char* argv[])
 {
+    Portal app;
+    return app.main(argc, argv, "config.pub");
 }
+
+Portal::Portal() { }
 
 void Portal::NewStream(StreamEntry const& entry, const ::Ice::Current&)
 {
+    UpdateNotifier();
+
     _streamRegistry.push_back(entry);
-    if (!_streamNotifier)
-        printf("No Notifier\n");
-    else
-        _streamNotifier->Notify("New Stream\n");
+    _streamNotifier->Notify("New Stream\n");
 }
 
 void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
 {
+    UpdateNotifier();
+
     std::vector<StreamEntry>::iterator itr;
     for (itr = _streamRegistry.begin(); itr != _streamRegistry.end(); ++itr)
     {
@@ -33,25 +38,22 @@ void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
     }
 }
 
-StreamList Portal::GetStreamList(const ::Ice::Current&)
-{
-    return _streamRegistry;
-}
-
-int main(int argc, char* argv[])
-{
-    Portal app;
-    return app.main(argc, argv, "config.pub");
-}
-
-int
-Portal::run(int argc, char* argv[])
+int Portal::run(int argc, char* argv[])
 {
     Ice::ObjectAdapterPtr adapter =
         communicator()->createObjectAdapterWithEndpoints("Portal", "default -p 10000");
     Ice::ObjectPtr object = new Portal;
     adapter->add(object, communicator()->stringToIdentity("Portal"));
     adapter->activate();
+
+    communicator()->waitForShutdown();
+    return 0;
+}
+
+void Portal::UpdateNotifier()
+{
+    if (_streamNotifier)
+        return;
 
     IceStorm::TopicManagerPrx manager =
         IceStorm::TopicManagerPrx::checkedCast(communicator()->propertyToProxy("TopicManager.Proxy"));
@@ -67,8 +69,4 @@ Portal::run(int argc, char* argv[])
 
     Ice::ObjectPrx publisher = topic->getPublisher();
     _streamNotifier = StreamNotifierInterfacePrx::uncheckedCast(publisher);
-
-    communicator()->waitForShutdown();
-
-    return 0;
 }
