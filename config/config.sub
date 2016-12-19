@@ -13,7 +13,7 @@ Ice.Default.Host=localhost
 #
 # This property is used by the clients to connect to IceStorm.
 #
-TopicManager.Proxy=IceStorm/TopicManager:default -h localhost -p 9999
+TopicManager.Proxy=IceStorm/TopicManager:default -h localhost -p 9500
 
 #
 # Network Tracing
@@ -29,6 +29,6 @@ TopicManager.Proxy=IceStorm/TopicManager:default -h localhost -p 9999
 # IceMX configuration.
 #
 #Ice.Admin.Endpoints=tcp -h localhost -p 10002
-Ice.Admin.InstanceName=subscriber
-IceMX.Metrics.Debug.GroupBy=id
-IceMX.Metrics.ByParent.GroupBy=parent
+#Ice.Admin.InstanceName=subscriber
+#IceMX.Metrics.Debug.GroupBy=id
+#IceMX.Metrics.ByParent.GroupBy=parent

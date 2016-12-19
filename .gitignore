@@ -4,5 +4,6 @@
 *.#
 build/*
 db/*
+media/*
 PortalInterface.cpp
 PortalInterface.h
