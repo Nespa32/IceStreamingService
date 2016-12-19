@@ -99,7 +99,10 @@ void CLIClient::StreamAdded(StreamEntry const& entry)
     std::string const& name = entry.streamName;
     auto itr = _streams.find(name);
     if (itr == _streams.end())
+    {
+        LOG_INFO("[INFO] Stream added: '%s'", name.c_str());
         _streams[name] = entry;
+    }
     else
         LOG_ERROR("stream %s already exists", name.c_str());
 }
@@ -109,7 +112,10 @@ void CLIClient::StreamRemoved(StreamEntry const& entry)
     std::string const& name = entry.streamName;
     auto itr = _streams.find(name);
     if (itr != _streams.end())
+    {
+        LOG_INFO("[INFO] Stream removed: '%s'", name.c_str());
         _streams.erase(itr);
+    }
     else
         LOG_ERROR("stream %s not found", name.c_str());
 }
@@ -140,18 +146,31 @@ void CLIClient::RunCommands()
         {
             LOG_INFO("All commands can be preceded by 'stream'");
             LOG_INFO("help                - print this message");
-            LOG_INFO("list                - list all streams");
+            LOG_INFO("list [opt]          - list all streams");
+            LOG_INFO(" --detail           - shows stream endpoint/keywords");
             LOG_INFO("search $keywords    - list for streams with matching keywords");
             LOG_INFO("play $stream_name   - play stream with matching name");
+            LOG_INFO("exit/quit           - quits the cli");
         }
         else if (command == "list")
         {
+            std::string opt;
+            std::getline(iss, opt, ' ');
+            bool inDetail = opt == "--detail";
+
             LOG_INFO("There are %zu streams active", _streams.size());
             for (auto const& itr : _streams)
             {
                 StreamEntry const& entry = itr.second;
                 LOG_INFO("- name: %s video size: %s bit rate: %d",
                     entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
+
+                if (inDetail)
+                {
+                    LOG_INFO("EndPoint: %s", entry.endpoint.c_str());
+                    for (std::string const& entryKeyword : entry.keyword)
+                        LOG_INFO("Keyword: %s", entryKeyword.c_str());
+                }
             }
         }
         else if (command == "search")
@@ -163,9 +182,8 @@ void CLIClient::RunCommands()
                 for (auto const& itr : _streams)
                 {
                     StreamEntry const& entry = itr.second;
-                    for (size_t i = 0; i < entry.keyword.size(); ++i)
+                    for (std::string const& entryKeyword : entry.keyword)
                     {
-                        std::string const& entryKeyword = entry.keyword[i];
                         if (entryKeyword.find(keyword) != std::string::npos)
                             matches[entry.streamName] = &entry;
                     }
