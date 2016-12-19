@@ -1,12 +1,15 @@
 
 #include <sys/time.h>
 
-#define nullptr NULL
-
 #define LOG_ERROR(fmt, ...)                                 \
     do {                                                    \
         fprintf(stderr, "%s:%d:%s(): " fmt "\n",            \
             __FILE__, __LINE__, __func__, ##__VA_ARGS__);   \
+    } while (0)
+
+#define LOG_INFO(fmt, ...)                                  \
+    do {                                                    \
+        fprintf(stdout, fmt "\n", ##__VA_ARGS__);           \
     } while (0)
 
 inline long getMSTime()

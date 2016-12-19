@@ -1,7 +1,8 @@
+#include <string>
+#include <map>
+
 #include <Ice/Ice.h>
 #include "PortalInterface.h"
-
-#define override
 
 using namespace StreamingService;
 
@@ -10,17 +11,19 @@ class Portal : public PortalInterface, public Ice::Application
 public:
     explicit Portal();
 
-    void NewStream(StreamEntry const& entry, const ::Ice::Current&) override;
-    void CloseStream(StreamEntry const& entry, const ::Ice::Current&) override;
+    // PortalInterface overrides
+    void NewStream(StreamEntry const& entry, Ice::Current const& curr) override;
+    void CloseStream(StreamEntry const& entry, Ice::Current const& curr) override;
 
-    StreamList GetStreamList(const ::Ice::Current&) override { return _streamRegistry; }
-    int run(int, char*[]) override;
+    StreamList GetStreamList(Ice::Current const& curr) override;
+
+    // Ice::Application overrides
+    int run(int argc, char** argv) override;
 
 private:
     void UpdateNotifier();
 
 private:
-    StreamList _streamRegistry;
-    StreamNotifierInterfacePrx _streamNotifier;
-
+    std::map<std::string, StreamEntry> _streams;
+    StreamNotifierInterfacePrx _notifier;
 };

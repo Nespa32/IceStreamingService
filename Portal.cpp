@@ -1,4 +1,5 @@
 #include "Portal.h"
+#include "Util.h"
 
 #include <IceUtil/IceUtil.h>
 #include <IceStorm/IceStorm.h>
@@ -13,29 +14,50 @@ int main(int argc, char* argv[])
 
 Portal::Portal() { }
 
-void Portal::NewStream(StreamEntry const& entry, const ::Ice::Current&)
+void Portal::NewStream(StreamEntry const& entry, Ice::Current const& /*curr*/)
 {
     UpdateNotifier();
 
-    _streamRegistry.push_back(entry);
-    _streamNotifier->Notify("New Stream\n");
+    std::string const& name = entry.streamName;
+    auto itr = _streams.find(name);
+    if (itr == _streams.end())
+        _streams[name] = entry;
+    else
+    {
+        LOG_ERROR("stream with name %s already exists", name.c_str());
+        return;
+    }
+
+    _notifier->NotifyStreamAdded(entry);
 }
 
-void Portal::CloseStream(StreamEntry const& entry, const ::Ice::Current&)
+void Portal::CloseStream(StreamEntry const& entry, Ice::Current const& /*curr*/)
 {
     UpdateNotifier();
 
-    std::vector<StreamEntry>::iterator itr;
-    for (itr = _streamRegistry.begin(); itr != _streamRegistry.end(); ++itr)
+    std::string const& name = entry.streamName;
+    auto itr = _streams.find(name);
+    if (itr != _streams.end())
+        _streams.erase(itr);
+    else
     {
-        StreamEntry const& streamEntry = *itr;
-        if (streamEntry.streamName == entry.streamName)
-        {
-            _streamNotifier->Notify("Deleted Stream\n");
-            _streamRegistry.erase(itr);
-            break;
-        }
+        LOG_ERROR("stream %s not found", name.c_str());
+        return;
     }
+
+    _notifier->NotifyStreamRemoved(entry);
+}
+
+StreamList Portal::GetStreamList(Ice::Current const& /*curr*/)
+{
+    StreamList streamList;
+    for (auto const& itr : _streams)
+    {
+        StreamEntry const& entry = itr.second;
+        streamList.push_back(entry);
+    }
+
+    return streamList;
 }
 
 int Portal::run(int argc, char* argv[])
@@ -46,13 +68,17 @@ int Portal::run(int argc, char* argv[])
     adapter->add(object, communicator()->stringToIdentity("Portal"));
     adapter->activate();
 
+    UpdateNotifier();
+
+    LOG_INFO("Portal up and running");
+
     communicator()->waitForShutdown();
     return 0;
 }
 
 void Portal::UpdateNotifier()
 {
-    if (_streamNotifier)
+    if (_notifier)
         return;
 
     IceStorm::TopicManagerPrx manager =
@@ -62,11 +88,11 @@ void Portal::UpdateNotifier()
     {
         topic = manager->retrieve("stream");
     }
-    catch(const IceStorm::NoSuchTopic&)
+    catch (IceStorm::NoSuchTopic const&)
     {
         topic = manager->create("stream");
     }
 
     Ice::ObjectPrx publisher = topic->getPublisher();
-    _streamNotifier = StreamNotifierInterfacePrx::uncheckedCast(publisher);
+    _notifier = StreamNotifierInterfacePrx::uncheckedCast(publisher);
 }

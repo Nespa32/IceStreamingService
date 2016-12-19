@@ -18,18 +18,10 @@
 
 using namespace StreamingService;
 
-class StreamNotifier : public StreamNotifierInterface
-{
-public:
-    void Notify(const std::string& notification, const Ice::Current&) override
-    {
-        std::cout << notification << '\n';
-    }
-};
-
 int main(int argc, char** argv)
 {
     std::string const portalId = "Portal:default -p 10000";
+
     CLIClient app(portalId);
     return app.main(argc, argv, "config.sub");
 }
@@ -43,35 +35,88 @@ CLIClient::~CLIClient() { }
 
 int CLIClient::run(int argc, char* argv[])
 {
-    Ice::ObjectPrx base = communicator()->stringToProxy(_portalId);
-    _portal = PortalInterfacePrx::checkedCast(base);
-    //IceStorm stuff
-    Ice::StringSeq args = Ice::argsToStringSeq(argc, argv);
-    args = communicator()->getProperties()->parseCommandLineOptions("Notifier", args);
-    Ice::stringSeqToArgs(args, argc, argv);
-    IceStorm::TopicManagerPrx manager =
-        IceStorm::TopicManagerPrx::checkedCast(
-                                               communicator()->propertyToProxy("TopicManager.Proxy"));
-    IceStorm::TopicPrx topic;
-    topic = manager->retrieve("stream");
-    Ice::ObjectAdapterPtr adapter = communicator()->createObjectAdapter("Notifier.Subscriber");
-    Ice::Identity subId;
-    subId.name = IceUtil::generateUUID();
-    Ice::ObjectPrx subscriber = adapter->add(new StreamNotifier, subId);
-    adapter->activate();
-    IceStorm::QoS qos;
-    topic->subscribeAndGetPublisher(qos, subscriber);
-    //IceStorm stuff
-
-    if (!_portal)
+    // connect to Portal, fetch stream list
     {
-        printf("CLIClient::run - portal not found\n");
-        return 0;
+        Ice::ObjectPrx base = communicator()->stringToProxy(_portalId);
+        PortalInterfacePrx portal = PortalInterfacePrx::checkedCast(base);
+
+        // can't run client without an active Portal
+        if (!portal)
+        {
+            LOG_ERROR("portal not found");
+            return 1;
+        }
+
+        auto streamList = portal->GetStreamList();
+        for (StreamEntry const& entry : streamList)
+            _streams[entry.streamName] = entry;
     }
 
-    _streams = _portal->GetStreamList();
+    IceStorm::TopicPrx topic;
+    Ice::ObjectPrx subscriber;
+    // setup stream subscriber
+    {
+        IceStorm::TopicManagerPrx manager =
+            IceStorm::TopicManagerPrx::checkedCast(communicator()->propertyToProxy("TopicManager.Proxy"));
 
-    printf("Connected, press help for a command list\n");
+        try
+        {
+            topic = manager->retrieve("stream");
+        }
+        catch (IceStorm::NoSuchTopic const&)
+        {
+            LOG_ERROR("failed to find IceStorm topic");
+            return 1;
+        }
+
+        Ice::ObjectAdapterPtr adapter = communicator()->createObjectAdapter("Notifier.Subscriber");
+        Ice::Identity subId;
+        subId.name = IceUtil::generateUUID();
+        subscriber = adapter->add(new StreamNotifier(*this), subId);
+
+        adapter->activate();
+
+        try
+        {
+            topic->subscribeAndGetPublisher(IceStorm::QoS(), subscriber);
+        }
+        catch (IceStorm::AlreadySubscribed const&)
+        {
+            LOG_ERROR("notifier already subscribed");
+            return 1;
+        }
+    }
+
+    // run command loop
+    RunCommands();
+
+    topic->unsubscribe(subscriber);
+    return 0;
+}
+
+void CLIClient::StreamAdded(StreamEntry const& entry)
+{
+    std::string const& name = entry.streamName;
+    auto itr = _streams.find(name);
+    if (itr == _streams.end())
+        _streams[name] = entry;
+    else
+        LOG_ERROR("stream %s already exists", name.c_str());
+}
+
+void CLIClient::StreamRemoved(StreamEntry const& entry)
+{
+    std::string const& name = entry.streamName;
+    auto itr = _streams.find(name);
+    if (itr != _streams.end())
+        _streams.erase(itr);
+    else
+        LOG_ERROR("stream %s not found", name.c_str());
+}
+
+void CLIClient::RunCommands()
+{
+    LOG_INFO("Connected, press help for a command list");
 
     while (true)
     {
@@ -93,19 +138,19 @@ int CLIClient::run(int argc, char* argv[])
 
         if (command == "help")
         {
-            printf("All commands can be preceded by 'stream'\n");
-            printf("help                - print this message\n");
-            printf("list                - list all streams\n");
-            printf("search $keywords    - list for streams with matching keywords\n");
-            printf("play $stream_name   - play stream with matching name\n");
+            LOG_INFO("All commands can be preceded by 'stream'");
+            LOG_INFO("help                - print this message");
+            LOG_INFO("list                - list all streams");
+            LOG_INFO("search $keywords    - list for streams with matching keywords");
+            LOG_INFO("play $stream_name   - play stream with matching name");
         }
         else if (command == "list")
         {
-            printf("There are %zu streams active\n", _streams.size());
-            for (size_t i = 0; i < _streams.size(); ++i)
+            LOG_INFO("There are %zu streams active", _streams.size());
+            for (auto const& itr : _streams)
             {
-                StreamEntry const& entry = _streams[i];
-                printf("- name: %s video size: %s bit rate: %d\n",
+                StreamEntry const& entry = itr.second;
+                LOG_INFO("- name: %s video size: %s bit rate: %d",
                     entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
             }
         }
@@ -115,9 +160,9 @@ int CLIClient::run(int argc, char* argv[])
             std::string keyword;
             while (std::getline(iss, keyword, ' '))
             {
-                for (StreamList::const_iterator itr = _streams.begin(); itr != _streams.end(); ++itr)
+                for (auto const& itr : _streams)
                 {
-                    StreamEntry const& entry = *itr;
+                    StreamEntry const& entry = itr.second;
                     for (size_t i = 0; i < entry.keyword.size(); ++i)
                     {
                         std::string const& entryKeyword = entry.keyword[i];
@@ -127,11 +172,11 @@ int CLIClient::run(int argc, char* argv[])
                 }
             }
 
-            printf("There are %zu streams matches\n", _streams.size());
-            for (std::map<std::string, StreamEntry const*>::const_iterator itr = matches.begin(); itr != matches.end(); ++itr)
+            LOG_INFO("There are %zu streams matches", matches.size());
+            for (auto const& itr : matches)
             {
-                StreamEntry const& entry = *itr->second;
-                printf("- name: %s video size: %s bit rate: %d\n",
+                StreamEntry const& entry = *itr.second;
+                LOG_INFO("- name: %s video size: %s bit rate: %d",
                     entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
             }
         }
@@ -140,19 +185,11 @@ int CLIClient::run(int argc, char* argv[])
             std::string streamName;
             std::getline(iss, streamName);
 
-            StreamEntry const* entryToPlay = nullptr;
-            for (StreamList::const_iterator itr = _streams.begin(); itr != _streams.end(); ++itr)
+            auto itr = _streams.find(streamName);
+            if (itr != _streams.end())
             {
-                StreamEntry const& entry = *itr;
-                if (streamName == entry.streamName)
-                {
-                    entryToPlay = &entry;
-                    break;
-                }
-            }
+                StreamEntry const& entryToPlay = itr->second;
 
-            if (entryToPlay)
-            {
                 // launch ffplay instance
                 if (fork() == 0)
                 {
@@ -162,21 +199,24 @@ int CLIClient::run(int argc, char* argv[])
                     dup2(fd, STDERR_FILENO);
                     close(fd);
 
-                    execlp("ffplay", "ffplay", entryToPlay->endpoint.c_str(), NULL);
+                    execlp("ffplay", "ffplay", entryToPlay.endpoint.c_str(), NULL);
                 }
             }
             else
             {
-                printf("Stream '%s' not found\n", streamName.c_str());
+                LOG_INFO("Stream '%s' not found", streamName.c_str());
             }
+        }
+        else if (command == "quit" || command == "exit")
+        {
+            LOG_INFO("Exiting...");
+            return;
         }
         else
         {
             // ignore empty commands
             if (!command.empty())
-                printf("Unrecognised command '%s'\n", command.c_str());
+                LOG_INFO("Unrecognised command '%s'", command.c_str());
         }
     }
-    topic->unsubscribe(subscriber);
-    return 0;
 }
