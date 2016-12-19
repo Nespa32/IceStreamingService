@@ -3,5 +3,6 @@
 *#
 *.#
 build/*
+db/*
 PortalInterface.cpp
 PortalInterface.h
