@@ -9,7 +9,7 @@ using namespace StreamingService;
 class CLIClient : public Ice::Application
 {
 public:
-    explicit CLIClient(std::string const& portalId);
+    CLIClient();
     ~CLIClient();
 
     // Ice::Application overrides
@@ -22,7 +22,6 @@ private:
     void RunCommands();
 
 private:
-    std::string _portalId;
     std::map<std::string, StreamEntry> _streams;
 };
 

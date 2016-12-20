@@ -20,16 +20,11 @@ using namespace StreamingService;
 
 int main(int argc, char** argv)
 {
-    std::string const portalId = "Portal:default -p 10000";
-
-    CLIClient app(portalId);
-    return app.main(argc, argv, "config.sub");
+    CLIClient app;
+    return app.main(argc, argv, "config.client");
 }
 
-CLIClient::CLIClient(std::string const& portalId)
-{
-    _portalId = portalId;
-}
+CLIClient::CLIClient() { }
 
 CLIClient::~CLIClient() { }
 
@@ -37,7 +32,7 @@ int CLIClient::run(int argc, char* argv[])
 {
     // connect to Portal, fetch stream list
     {
-        Ice::ObjectPrx base = communicator()->stringToProxy(_portalId);
+        Ice::ObjectPrx base = communicator()->propertyToProxy("Portal.Proxy");
         PortalInterfacePrx portal = PortalInterfacePrx::checkedCast(base);
 
         // can't run client without an active Portal
@@ -162,8 +157,9 @@ void CLIClient::RunCommands()
             for (auto const& itr : _streams)
             {
                 StreamEntry const& entry = itr.second;
-                LOG_INFO("- name: %s video size: %s bit rate: %d",
-                    entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
+                LOG_INFO("- name: %s video size: %s bit rate: %s",
+                    entry.streamName.c_str(), entry.videoSize.c_str(),
+                    entry.bitRate.c_str());
 
                 if (inDetail)
                 {
@@ -194,8 +190,9 @@ void CLIClient::RunCommands()
             for (auto const& itr : matches)
             {
                 StreamEntry const& entry = *itr.second;
-                LOG_INFO("- name: %s video size: %s bit rate: %d",
-                    entry.streamName.c_str(), entry.videoSize.c_str(), entry.bitRate);
+                LOG_INFO("- name: %s video size: %s bit rate: %s",
+                    entry.streamName.c_str(), entry.videoSize.c_str(),
+                    entry.bitRate.c_str());
             }
         }
         else if (command == "play")

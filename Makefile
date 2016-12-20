@@ -21,6 +21,9 @@ default:
 	g++ $(CPP_FLAGS) $(CPP_LIBS) -o $(BUILD_DIR)/streamer $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Streamer.o
 	g++ $(CPP_FLAGS) $(CPP_LIBS) -o $(BUILD_DIR)/client $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Client.o
 
+	# copy ffmpeg shell script
+	cp -n $(SRC_DIR)/streamer_ffmpeg.sh $(BUILD_DIR)
+
 	# setup initial config files
 	cp -n $(CONFIG_DIR)/* $(BUILD_DIR)
 

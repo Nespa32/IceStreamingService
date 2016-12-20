@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <string>
 
 #include <Ice/Ice.h>
@@ -5,28 +6,35 @@
 
 using namespace StreamingService;
 
-class Streamer
+class Streamer : public Ice::Application
 {
 public:
-    Streamer(std::string const& portalId, Ice::CommunicatorPtr ic,
-        StreamEntry const& streamEntry, int listenPort, int ffmpegPort);
+    Streamer();
+
+    // Ice::Application overrides
+    int run(int argc, char** argv) override;
 
     bool Initialize();
     void Close();
     void Run();
 
-    void ForceExit() { _forceExit = true; }
+private:
+    static void PrintUsage();
 
 private:
     // configs
-    int const _listenPort;
-    int const _ffmpegPort;
+    std::string _videoFilePath;
+    // endpoint info
+    std::string _transport;
+    std::string _host;
+    int _listenPort = 0;
+    int _ffmpegPort = 0;
 
     PortalInterfacePrx _portal;
     StreamEntry _streamEntry;
     std::list<int> _clientList;
-    int _listenSocketFd;
-    int _ffmpegSocketFd;
-    bool _forceExit;
+    int _listenSocketFd = 0;
+    int _ffmpegSocketFd = 0;
+    pid_t _ffmpegPid = 0;
 };
 

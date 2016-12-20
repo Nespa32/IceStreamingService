@@ -9,7 +9,7 @@ using namespace StreamingService;
 int main(int argc, char* argv[])
 {
     Portal app;
-    return app.main(argc, argv, "config.pub");
+    return app.main(argc, argv, "config.portal");
 }
 
 Portal::Portal() { }

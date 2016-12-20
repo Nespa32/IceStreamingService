@@ -7,7 +7,7 @@ module StreamingService
         string streamName;
         string endpoint;
         string videoSize;
-        int bitRate;
+        string bitRate;
         StringList keyword;
     };
 

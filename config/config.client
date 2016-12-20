@@ -1,5 +1,16 @@
 #
-# This property is used to configure the endpoints of the clock
+# The streamer reads this property to create the reference to the
+# "Portal" object in the server.
+#
+Portal.Proxy=Portal:default -h localhost -p 10000
+
+#
+# Warn about connection exceptions
+#
+Ice.Warn.Connections=1
+
+#
+# This property is used to configure the endpoints of the notifier
 # subscriber adapter. These endpoints are where the client receives
 # topic messages from IceStorm.
 #
