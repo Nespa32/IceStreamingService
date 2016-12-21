@@ -17,9 +17,9 @@ default:
 	g++ $(CPP_FLAGS) $(CPP_INCLUDES) -o $(BUILD_DIR)/Portal.o -c $(SRC_DIR)/Portal.cpp
 	g++ $(CPP_FLAGS) $(CPP_INCLUDES) -o $(BUILD_DIR)/Streamer.o -c $(SRC_DIR)/Streamer.cpp
 	g++ $(CPP_FLAGS) $(CPP_INCLUDES) -o $(BUILD_DIR)/Client.o -c $(SRC_DIR)/Client.cpp
-	g++ $(CPP_FLAGS) $(CPP_LIBS) -o $(BUILD_DIR)/portal $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Portal.o
-	g++ $(CPP_FLAGS) $(CPP_LIBS) -o $(BUILD_DIR)/streamer $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Streamer.o
-	g++ $(CPP_FLAGS) $(CPP_LIBS) -o $(BUILD_DIR)/client $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Client.o
+	g++ $(CPP_FLAGS) -o $(BUILD_DIR)/portal $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Portal.o $(CPP_LIBS)
+	g++ $(CPP_FLAGS) -o $(BUILD_DIR)/streamer $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Streamer.o $(CPP_LIBS)
+	g++ $(CPP_FLAGS) -o $(BUILD_DIR)/client $(BUILD_DIR)/PortalInterface.o $(BUILD_DIR)/Client.o $(CPP_LIBS)
 
 	# copy ffmpeg shell script
 	cp -n $(SRC_DIR)/streamer_ffmpeg.sh $(BUILD_DIR)
