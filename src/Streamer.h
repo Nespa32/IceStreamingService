@@ -20,6 +20,7 @@ public:
 
 private:
     static void PrintUsage();
+    bool IsNewClient(struct sockaddr_in clientaddr);
 
 private:
     // configs
@@ -33,8 +34,10 @@ private:
     PortalInterfacePrx _portal;
     StreamEntry _streamEntry;
     std::list<int> _clientList;
+    std::list<struct sockaddr_in> _clientUdpList;
     int _listenSocketFd = 0;
     int _ffmpegSocketFd = 0;
     pid_t _ffmpegPid = 0;
+    bool _isTcp = true;
 };
 

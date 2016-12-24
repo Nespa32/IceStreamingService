@@ -11,6 +11,9 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "Streamer.h"
 #include "Util.h"
 
@@ -112,7 +115,8 @@ int Streamer::run(int argc, char** argv)
     }
 
     int exitCode = 0;
-
+    if (_transport != "tcp")
+        _isTcp = false;
     // actual stream logic
     {
         // open listen port, start ffmpeg
@@ -148,7 +152,11 @@ bool Streamer::Initialize()
     {
         LOG_INFO("Setting up listen socket...");
 
-        _listenSocketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+        if (_isTcp)
+            _listenSocketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+        else
+            _listenSocketFd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+
         if (_listenSocketFd < 0)
         {
             LOG_ERROR("Failed to initialize listen socket");
@@ -168,7 +176,7 @@ bool Streamer::Initialize()
             return false;
         }
 
-        if (listen(_listenSocketFd, LISTEN_BACKLOG) < 0)
+        if (_isTcp && listen(_listenSocketFd, LISTEN_BACKLOG) < 0)
         {
             LOG_ERROR("Failed to open listen socket");
             return false;
@@ -207,8 +215,8 @@ bool Streamer::Initialize()
                 _streamEntry.bitRate.c_str(),       // $4
                 nullptr);
         }
-
         _ffmpegSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+
         hostent* server = gethostbyname(ffmpegHost.c_str());
 
         sockaddr_in addr;
@@ -282,11 +290,25 @@ void Streamer::Run()
     while (true)
     {
         // periodically accept new clients
-        int clientSocket = accept4(_listenSocketFd, NULL, NULL, SOCK_NONBLOCK);
-        if (clientSocket > 0)
+        if (_isTcp) // tcp
         {
-            _clientList.push_back(clientSocket);
-            LOG_INFO("Accepted new client, fd %d", clientSocket);
+            int clientSocket = accept4(_listenSocketFd, NULL, NULL, SOCK_NONBLOCK);
+            if (clientSocket > 0)
+            {
+                _clientList.push_back(clientSocket);
+                LOG_INFO("Accepted new client, fd %d", clientSocket);
+            }
+        }
+
+        else // udp
+        {
+            struct sockaddr_in clientaddr;
+            socklen_t clientlen = sizeof(clientaddr);
+            char buffer[BUFFER_SIZE];
+            int n = recvfrom(_listenSocketFd, buffer, BUFFER_SIZE, 0,
+                             (struct sockaddr *) &clientaddr, &clientlen);
+            if (n > 0 && Streamer::IsNewClient(clientaddr))
+                _clientUdpList.push_back(clientaddr);
         }
 
         usleep(sleepTime * 1e3); // wait a bit so there's some data to send
@@ -316,16 +338,33 @@ void Streamer::Run()
             }
 
             // send data to all clients, remove clients with invalid/closed sockets
-            _clientList.remove_if([buffer](int clientSocket)
+            if (_isTcp)
             {
-                if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
-                {
-                    LOG_INFO("Removing client fd %d from client list", clientSocket);
-                    return true;
-                }
+                _clientList.remove_if([buffer](int clientSocket)
+                                      {
+                                          if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
+                                          {
+                                              LOG_INFO("Removing client fd %d from client list", clientSocket);
+                                              return true;
+                                          }
 
-                return false;
-            });
+                                          return false;
+                                      });
+            }
+            else
+            {
+                _clientUdpList.remove_if([buffer, this](struct sockaddr_in clientaddr) {
+                        int clientlen = sizeof(clientaddr);
+                        if (sendto(_listenSocketFd, buffer, BUFFER_SIZE, 0, 
+                                   (struct sockaddr *) &clientaddr, clientlen) < 0)
+                            {
+                                //LOG_INFO("Removing client fd %d from client list", clientSocket);
+                                return true;
+                            }
+
+                            return false;
+                    });
+            }
 
             // break out of send cycle and accept new clients if a tick has passed
             long now = getMSTime();
@@ -346,4 +385,20 @@ void Streamer::PrintUsage()
     LOG_INFO("'--video_size $size' specifies video size, 480x270 by default");
     LOG_INFO("'--bit_rate $rate' sets video bit rate, 400k by default");
     LOG_INFO("'--keywords $key1,$key2...,$keyn' adds search keywords to stream");
+}
+
+bool Streamer::IsNewClient(sockaddr_in clientaddr)
+{
+    int clientPort = ntohs(clientaddr.sin_port);
+    char *clientIp = inet_ntoa(clientaddr.sin_addr);
+
+    for (sockaddr_in& addr : _clientUdpList)
+    {
+        int port = ntohs(addr.sin_port);
+        char *ip = inet_ntoa(addr.sin_addr);
+        if (port == clientPort && strcmp(clientIp, ip) == 0)
+            return false;
+    }
+
+    return true;
 }
