@@ -78,6 +78,8 @@ int Streamer::run(int argc, char** argv)
 
         std::string arg = argv[i + 1];
 
+        ++i; // consume arg
+
         if (option == "--transport")
             _transport = arg;
         else if (option == "--host")
