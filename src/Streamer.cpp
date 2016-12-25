@@ -186,6 +186,10 @@ bool Streamer::Initialize()
 
         int setVal = 1;
         setsockopt(_listenSocketFd, SOL_SOCKET, SO_REUSEADDR, &setVal, sizeof(int));
+        if (!_isTcp)
+            setsockopt(_listenSocketFd, SOL_SOCKET, IP_RECVERR,
+               (const void *)&setVal , sizeof(int));
+
     }
 
     // start ffmpeg, wait for open port
@@ -194,7 +198,8 @@ bool Streamer::Initialize()
         std::string ffmpegHost = "127.0.0.1";
 
         // need to setup a seperate endpoint for ffmpeg, since the port will differ
-        std::string endpoint = _transport +
+
+        std::string endpoint = std::string("tcp") +
             "://" + ffmpegHost +
             ":" + std::to_string(_ffmpegPort);
 
@@ -243,7 +248,6 @@ bool Streamer::Initialize()
             usleep(500 * 1e3); // 500ms sleep
         }
     }
-
     _portal->NewStream(_streamEntry);
     return true;
 }
@@ -309,8 +313,14 @@ void Streamer::Run()
             char buffer[BUFFER_SIZE];
             int n = recvfrom(_listenSocketFd, buffer, BUFFER_SIZE, 0,
                              (struct sockaddr *) &clientaddr, &clientlen);
-            if (n > 0 && Streamer::IsNewClient(clientaddr))
+            if (n != -1)
+                printf("New Client\n");
+            if (n != -1 && Streamer::IsNewClient(clientaddr))
+            {
+                printf("Pushing new Client");
                 _clientUdpList.push_back(clientaddr);
+            }
+            printf("Next\n");
         }
 
         usleep(sleepTime * 1e3); // wait a bit so there's some data to send
@@ -357,7 +367,7 @@ void Streamer::Run()
             {
                 _clientUdpList.remove_if([buffer, this](struct sockaddr_in clientaddr) {
                         int clientlen = sizeof(clientaddr);
-                        if (sendto(_listenSocketFd, buffer, BUFFER_SIZE, 0, 
+                        if (sendto(_listenSocketFd, buffer, BUFFER_SIZE, 0,
                                    (struct sockaddr *) &clientaddr, clientlen) < 0)
                             {
                                 //LOG_INFO("Removing client fd %d from client list", clientSocket);
