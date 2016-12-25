@@ -320,7 +320,6 @@ void Streamer::Run()
                 printf("Pushing new Client");
                 _clientUdpList.push_back(clientaddr);
             }
-            printf("Next\n");
         }
 
         usleep(sleepTime * 1e3); // wait a bit so there's some data to send
