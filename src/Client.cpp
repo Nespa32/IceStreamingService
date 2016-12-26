@@ -10,6 +10,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+// udp include
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+
 #include "Client.h"
 #include "Util.h"
 
@@ -204,7 +210,30 @@ void CLIClient::RunCommands()
             if (itr != _streams.end())
             {
                 StreamEntry const& entryToPlay = itr->second;
-
+                { // Check if the transport is udp
+                char* transport = strdup(entryToPlay.endpoint.c_str());
+                strtok (transport,":/");
+                char* port = strtok (NULL, ":/");
+                char* ip = strtok (NULL, ":/");
+                if (strcmp(transport, "udp") == 0) // UDP
+                {
+                    int clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
+                    struct sockaddr_in streamerAddr;
+                    streamerAddr.sin_family = AF_INET;
+                    streamerAddr.sin_port = htons(atoi(port));
+                    streamerAddr.sin_addr.s_addr = inet_addr(ip);
+                    streamerAddr.sin_port = htons(9600);
+                    streamerAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+                    memset(streamerAddr.sin_zero, '\0', sizeof streamerAddr.sin_zero);
+                    const char* str = "hello";
+                    int err = -1;
+                    while (err == -1)
+                    {
+                        err = sendto(clientSocket, str, sizeof(str), 0, (struct sockaddr*)&streamerAddr, sizeof(streamerAddr));
+                    }
+                    printf("Message sent to the streamer\n");
+                }
+                }
                 // launch ffplay instance
                 if (fork() == 0)
                 {

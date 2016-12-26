@@ -313,11 +313,9 @@ void Streamer::Run()
             char buffer[BUFFER_SIZE];
             int n = recvfrom(_listenSocketFd, buffer, BUFFER_SIZE, 0,
                              (struct sockaddr *) &clientaddr, &clientlen);
-            if (n != -1)
-                printf("New Client\n");
             if (n != -1 && Streamer::IsNewClient(clientaddr))
             {
-                printf("Pushing new Client");
+                printf("Pushing new Client\n");
                 _clientUdpList.push_back(clientaddr);
             }
         }
@@ -402,7 +400,6 @@ bool Streamer::IsNewClient(sockaddr_in clientaddr)
 {
     int clientPort = ntohs(clientaddr.sin_port);
     char *clientIp = inet_ntoa(clientaddr.sin_addr);
-
     for (sockaddr_in& addr : _clientUdpList)
     {
         int port = ntohs(addr.sin_port);
@@ -410,6 +407,5 @@ bool Streamer::IsNewClient(sockaddr_in clientaddr)
         if (port == clientPort && strcmp(clientIp, ip) == 0)
             return false;
     }
-
     return true;
 }
