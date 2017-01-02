@@ -222,8 +222,8 @@ void CLIClient::RunCommands()
                     streamerAddr.sin_family = AF_INET;
                     streamerAddr.sin_port = htons(atoi(port));
                     streamerAddr.sin_addr.s_addr = inet_addr(ip);
-                    streamerAddr.sin_port = htons(9600);
-                    streamerAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+                    //                    streamerAddr.sin_port = htons(9600);
+                    //streamerAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
                     memset(streamerAddr.sin_zero, '\0', sizeof streamerAddr.sin_zero);
                     const char* str = "hello";
                     int err = -1;
