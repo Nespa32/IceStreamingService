@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <stdlib.h>
 
 #include "Client.h"
 #include "Util.h"
@@ -22,8 +23,7 @@
 #include <IceStorm/IceStorm.h>
 #include <IceUtil/IceUtil.h>
 
-#define BUFFER_SIZE 4136
-//256
+#define BUFFER_SIZE 256
 
 using namespace StreamingService;
 
@@ -255,11 +255,13 @@ void CLIClient::RunCommands()
 
                     char str[20] ;
                     sprintf(str, "%d", ntohs(udpAddr.sin_port));
+                    printf("New ffplay port : %d\n", ntohs(udpAddr.sin_port));
                     int err = -1;
                     while (err == -1)
                     {
                         err = sendto(clientSocket, str, sizeof(str), 0, (struct sockaddr*)&streamerAddr, sizeof(streamerAddr));
                     }
+                    printf("Message sent to streamer\n");
                 }
                 }
                 // launch ffplay instance
@@ -280,6 +282,7 @@ void CLIClient::RunCommands()
                         char buf[BUFFER_SIZE];
                         int ffplaySockFD = socket(AF_INET, SOCK_STREAM, 0);
                         sockaddr_in ffplayAddr;
+                        socklen_t len = sizeof(ffplayAddr);
                         struct hostent *server;
 
                         server = gethostbyname("localhost");
@@ -289,39 +292,52 @@ void CLIClient::RunCommands()
                         bcopy((char *)server->h_addr,
                               (char *)&ffplayAddr.sin_addr.s_addr,
                               server->h_length);
-                        ffplayAddr.sin_port = 0;
+                        ffplayAddr.sin_port = htons(9999);
 
                         if (bind(ffplaySockFD, (sockaddr*)&ffplayAddr, sizeof(ffplayAddr)) < 0)
                         {
-                            LOG_ERROR("Failed to bind\n");
+                            printf("Failed to bind\n");
                         }
                         else
                         {
-                            socklen_t len = sizeof(ffplayAddr);
-                            getsockname(ffplaySockFD, (sockaddr*)&ffplayAddr, (socklen_t*)&len);
+                            //getsockname(ffplaySockFD, (sockaddr*)&ffplayAddr, (socklen_t*)&len);
                             printf("FFplay to port %d\n", ntohs(ffplayAddr.sin_port));
                         }
                         if(listen(ffplaySockFD, 2) < 0)
                         {
-                            LOG_ERROR("Failed to listen\n");
+                            printf("Failed to listen\n");
                         }
-                        socklen_t len = sizeof(ffplayAddr);
-                        int newFD;
-                        while((newFD = accept(ffplaySockFD, (struct sockaddr *) &ffplayAddr,
-                                              (socklen_t*)&len)) < 0 )
+                        if (0)
                         {
-                            LOG_ERROR("Failed to connect to ffplay, fd = %d\n", newFD);
+                            char port[10];
+                            snprintf(port, sizeof(port), "%d", ntohs(ffplayAddr.sin_port));
+                            printf("Going to exec %s\n", strcat("127.0.0.1:", port));
+                            execlp("ffplay", "ffplay", strcat("127.0.0.1:", port) , NULL);   
                         }
-                        LOG_INFO("Connected to ffplay, fd = %d\n", newFD);
-
-                        bzero(buf,BUFFER_SIZE);
-                        while (1)
+                        else
                         {
-                            ssize_t n = recvfrom(udpSocket, buf, BUFFER_SIZE, 0, (struct sockaddr *)&udpAddr, (socklen_t*)&len);
-                            if (n <= 0)
-                                break;
-                            write (newFD, buf, n);
+                            int newFD;
+                            while((newFD = accept(ffplaySockFD, (struct sockaddr *) &ffplayAddr,
+                                                  (socklen_t*)&len)) < 0 )
+                            {
+                                printf("Failed to connect to ffplay, fd = %d\n", newFD);
+                                sleep(1);
+                            }
+                            printf("Connected to ffplay, fd = %d\n", newFD);
+                            
+                            
+                            printf("Starting to send stuff to ffplay\n");
+                            
                             bzero(buf,BUFFER_SIZE);
+                            while (1)
+                            {
+                                ssize_t n = recvfrom(udpSocket,buf,BUFFER_SIZE,0,(struct sockaddr *)&udpAddr, (socklen_t*)&len);
+                                if (n <= 0)
+                                    break;
+                                write (newFD, buf, n);
+                                bzero(buf,BUFFER_SIZE);
+                            }
+                            printf("Done :(\n");
                         }
                     }
                 }

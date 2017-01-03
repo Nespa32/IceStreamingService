@@ -18,7 +18,7 @@
 #include "Util.h"
 
 #define LISTEN_BACKLOG 10
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 4136
 
 using namespace StreamingService;
 
@@ -313,9 +313,12 @@ void Streamer::Run()
             char buffer[BUFFER_SIZE];
             int n = recvfrom(_listenSocketFd, buffer, BUFFER_SIZE, 0,
                              (struct sockaddr *) &clientaddr, &clientlen);
+            clientaddr.sin_port = htons(atoi(buffer));
+            //clientaddr.sin_family = AF_INET;
+            //clientaddr.sin_addr.s_addr = INADDR_ANY;
             if (n != -1 && Streamer::IsNewClient(clientaddr))
             {
-                printf("Pushing new Client\n");
+                LOG_INFO("Pushing new Client port %d", htons(clientaddr.sin_port));
                 _clientUdpList.push_back(clientaddr);
             }
         }
@@ -368,10 +371,10 @@ void Streamer::Run()
                                    (struct sockaddr *) &clientaddr, clientlen) < 0)
                             {
                                 //LOG_INFO("Removing client fd %d from client list", clientSocket);
+                                LOG_INFO("Failed sent to port %d, removing", ntohs(clientaddr.sin_port));
                                 return true;
                             }
-
-                            return false;
+                        return false;
                     });
             }
 
