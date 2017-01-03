@@ -23,6 +23,7 @@ default:
 
 	# copy ffmpeg shell script
 	cp -n $(SRC_DIR)/streamer_ffmpeg.sh $(BUILD_DIR)
+	cp -n $(SRC_DIR)/streamer_ffmpeg_hls_dash.sh $(BUILD_DIR)
 
 	# setup initial config files
 	cp -n $(CONFIG_DIR)/* $(BUILD_DIR)

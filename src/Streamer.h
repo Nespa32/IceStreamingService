@@ -29,6 +29,9 @@ private:
     std::string _host;
     int _listenPort = 0;
     int _ffmpegPort = 0;
+    // support for HLS/DASH
+    std::string _hlsHost;
+    std::string _dashHost;
 
     PortalInterfacePrx _portal;
     StreamEntry _streamEntry;

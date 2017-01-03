@@ -91,15 +91,36 @@ int Streamer::run(int argc, char** argv)
             bitRate = arg;
         else if (option == "--keywords")
             keywords = arg;
+        else if (option == "--hls")
+            _hlsHost = arg;
+        else if (option == "--dash")
+            _dashHost = arg;
         else
             LOG_INFO("Unrecognized option '%s', skipping", option.c_str());
     }
+
+    // switch to HTTP mode
+    if (!_hlsHost.empty() || !_dashHost.empty())
+        _transport = "http";
 
     // setup stream entry
     // endpoint format: transport://host:port
     std::string endpoint = _transport +
         "://" + _host +
         ":" + std::to_string(_listenPort);
+
+    if (!_hlsHost.empty())
+    {
+        // format new endpoint
+        // http://nginx_host:port/hls/stream.m3u8
+        endpoint += "/hls/" + streamName + ".m3u8";
+    }
+    else if (!_dashHost.empty())
+    {
+        // format new endpoint
+        // http://nginx_host:port/dash/stream.m3u8
+        endpoint += "/dash/" + streamName + "/index.mpd";
+    }
 
     _streamEntry.streamName = streamName;
     _streamEntry.endpoint = endpoint;
@@ -147,6 +168,8 @@ bool Streamer::Initialize()
     }
 
     // open listen port
+    // only in regular case, since for HLS/DASH nginx takes care of streaming
+    if (_hlsHost.empty() && _dashHost.empty())
     {
         LOG_INFO("Setting up listen socket...");
 
@@ -180,8 +203,35 @@ bool Streamer::Initialize()
         setsockopt(_listenSocketFd, SOL_SOCKET, SO_REUSEADDR, &setVal, sizeof(int));
     }
 
-    // start ffmpeg, wait for open port
+    // handle ffmpeg start
+    if (!_hlsHost.empty() || !_dashHost.empty())
     {
+        // HLS/DASH case
+        std::string const& endpoint = (!_hlsHost.empty()) ? _hlsHost : _dashHost;
+
+        if (!_hlsHost.empty())
+            LOG_INFO("Starting HLS stream on %s", endpoint.c_str());
+        else if (!_dashHost.empty())
+            LOG_INFO("Streaming DASH stream on %s", endpoint.c_str());
+
+        _ffmpegPid = fork();
+        if (_ffmpegPid == 0)
+        {
+            // for the sake of flexibility, a shell script is used
+            // it's better than coding all ffmpeg arguments
+            // arguments used
+            // $1 = video file path
+            // $2 = HLS/DASH end point info in "transport://ip:port/path" format
+            //    (e.g rtmp://127.0.0.1:8080/hls_app/stream)
+            execlp("./streamer_ffmpeg_hls_dash.sh", "streamer_ffmpeg_hls_dash.sh",
+                _videoFilePath.c_str(),             // $1
+                endpoint.c_str(),                   // $2
+                nullptr);
+        }
+    }
+    else
+    {
+        // regular case, wait for open port
         // ffmpeg necessarily starts on localhost, only port can change
         std::string ffmpegHost = "127.0.0.1";
 
@@ -278,6 +328,16 @@ void Streamer::Run()
 {
     LOG_INFO("Streamer ready");
 
+    // HLS/DASH case, nginx is acting as a stream server and we've got nothing to do
+    // just sleep until ffmpeg exits
+    if (!_hlsHost.empty() || !_dashHost.empty())
+    {
+        while (!early_exit)
+            usleep(100 * 1e3);
+
+        return;
+    }
+
     long const sleepTime = 20; // 20ms sleep time per cycle
     long const tickTimer = 30; // 30ms for sending data per cycle
 
@@ -348,4 +408,6 @@ void Streamer::PrintUsage()
     LOG_INFO("'--video_size $size' specifies video size, 480x270 by default");
     LOG_INFO("'--bit_rate $rate' sets video bit rate, 400k by default");
     LOG_INFO("'--keywords $key1,$key2...,$keyn' adds search keywords to stream");
+    LOG_INFO("'--hls $nginx_host'");
+    LOG_INFO("'--dash $nginx_host'");
 }
