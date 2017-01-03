@@ -10,11 +10,20 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+// udp include
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
 #include "Client.h"
 #include "Util.h"
 
 #include <IceStorm/IceStorm.h>
 #include <IceUtil/IceUtil.h>
+
+#define BUFFER_SIZE 4136
+//256
 
 using namespace StreamingService;
 
@@ -197,6 +206,12 @@ void CLIClient::RunCommands()
         }
         else if (command == "play")
         {
+            // Some stuff for udp
+            int udpSocket;
+            sockaddr_in udpAddr;
+            int isTcp = 1;
+            socklen_t len;
+            //
             std::string streamName;
             std::getline(iss, streamName);
 
@@ -204,17 +219,111 @@ void CLIClient::RunCommands()
             if (itr != _streams.end())
             {
                 StreamEntry const& entryToPlay = itr->second;
+                { // Check if the transport is udp
+                char* transport = strdup(entryToPlay.endpoint.c_str());
+                strtok (transport,":/");
+                char* port = strtok (NULL, ":/");
+                char* ip = strtok (NULL, ":/");
+                if (strcmp(transport, "udp") == 0) // UDP
+                {
+                    isTcp = 0;
+                    // new port/socket for ffplay to connect to
+                    udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
+                    bzero((char*)&udpAddr, sizeof(udpAddr));
+                    udpAddr.sin_family = AF_INET;
+                    udpAddr.sin_addr.s_addr = INADDR_ANY;
+                    udpAddr.sin_port = 0;
+                    if (bind((udpSocket), (sockaddr*)&udpAddr, sizeof(udpAddr)) < 0)
+                    {
+                        LOG_INFO("Failed to bind to ffplay udp socket");
+                    }
+                    else
+                    {
+                        len = sizeof(udpAddr);
+                        getsockname(udpSocket, (sockaddr*)&udpAddr, (socklen_t*)&len);
+                    }
 
+                    // client/server first message
+                    int clientSocket = socket(AF_INET, SOCK_DGRAM, 0);
+                    struct sockaddr_in streamerAddr;
+                    streamerAddr.sin_family = AF_INET;
+                    streamerAddr.sin_port = htons(atoi(port));
+                    streamerAddr.sin_addr.s_addr = inet_addr(ip);
+                    streamerAddr.sin_port = htons(9600);
+                    streamerAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+                    memset(streamerAddr.sin_zero, '\0', sizeof streamerAddr.sin_zero);
+
+                    char str[20] ;
+                    sprintf(str, "%d", ntohs(udpAddr.sin_port));
+                    int err = -1;
+                    while (err == -1)
+                    {
+                        err = sendto(clientSocket, str, sizeof(str), 0, (struct sockaddr*)&streamerAddr, sizeof(streamerAddr));
+                    }
+                }
+                }
                 // launch ffplay instance
                 if (fork() == 0)
                 {
-                    // but redirect ffplay output to /dev/null
-                    int fd = open("/dev/null", O_WRONLY);
-                    dup2(fd, STDOUT_FILENO);
-                    dup2(fd, STDERR_FILENO);
-                    close(fd);
+                    if (isTcp)
+                    {
+                        // but redirect ffplay output to /dev/null
+                        int fd = open("/dev/null", O_WRONLY);
+                        dup2(fd, STDOUT_FILENO);
+                        dup2(fd, STDERR_FILENO);
+                        close(fd);
 
-                    execlp("ffplay", "ffplay", entryToPlay.endpoint.c_str(), NULL);
+                        execlp("ffplay", "ffplay", entryToPlay.endpoint.c_str(), NULL);
+                    }
+                    else // udp
+                    {
+                        char buf[BUFFER_SIZE];
+                        int ffplaySockFD = socket(AF_INET, SOCK_STREAM, 0);
+                        sockaddr_in ffplayAddr;
+                        struct hostent *server;
+
+                        server = gethostbyname("localhost");
+
+                        bzero((char *) &ffplayAddr, sizeof(ffplayAddr));
+                        ffplayAddr.sin_family = AF_INET;
+                        bcopy((char *)server->h_addr,
+                              (char *)&ffplayAddr.sin_addr.s_addr,
+                              server->h_length);
+                        ffplayAddr.sin_port = 0;
+
+                        if (bind(ffplaySockFD, (sockaddr*)&ffplayAddr, sizeof(ffplayAddr)) < 0)
+                        {
+                            LOG_ERROR("Failed to bind\n");
+                        }
+                        else
+                        {
+                            socklen_t len = sizeof(ffplayAddr);
+                            getsockname(ffplaySockFD, (sockaddr*)&ffplayAddr, (socklen_t*)&len);
+                            printf("FFplay to port %d\n", ntohs(ffplayAddr.sin_port));
+                        }
+                        if(listen(ffplaySockFD, 2) < 0)
+                        {
+                            LOG_ERROR("Failed to listen\n");
+                        }
+                        socklen_t len = sizeof(ffplayAddr);
+                        int newFD;
+                        while((newFD = accept(ffplaySockFD, (struct sockaddr *) &ffplayAddr,
+                                              (socklen_t*)&len)) < 0 )
+                        {
+                            LOG_ERROR("Failed to connect to ffplay, fd = %d\n", newFD);
+                        }
+                        LOG_INFO("Connected to ffplay, fd = %d\n", newFD);
+
+                        bzero(buf,BUFFER_SIZE);
+                        while (1)
+                        {
+                            ssize_t n = recvfrom(udpSocket, buf, BUFFER_SIZE, 0, (struct sockaddr *)&udpAddr, (socklen_t*)&len);
+                            if (n <= 0)
+                                break;
+                            write (newFD, buf, n);
+                            bzero(buf,BUFFER_SIZE);
+                        }
+                    }
                 }
             }
             else
