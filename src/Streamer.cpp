@@ -11,11 +11,14 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "Streamer.h"
 #include "Util.h"
 
 #define LISTEN_BACKLOG 10
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 4136
 
 using namespace StreamingService;
 
@@ -135,7 +138,8 @@ int Streamer::run(int argc, char** argv)
     }
 
     int exitCode = 0;
-
+    if (_transport != "tcp")
+        _isTcp = false;
     // actual stream logic
     {
         // open listen port, start ffmpeg
@@ -173,7 +177,11 @@ bool Streamer::Initialize()
     {
         LOG_INFO("Setting up listen socket...");
 
-        _listenSocketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+        if (_isTcp)
+            _listenSocketFd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+        else
+            _listenSocketFd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+
         if (_listenSocketFd < 0)
         {
             LOG_ERROR("Failed to initialize listen socket");
@@ -193,7 +201,7 @@ bool Streamer::Initialize()
             return false;
         }
 
-        if (listen(_listenSocketFd, LISTEN_BACKLOG) < 0)
+        if (_isTcp && listen(_listenSocketFd, LISTEN_BACKLOG) < 0)
         {
             LOG_ERROR("Failed to open listen socket");
             return false;
@@ -201,6 +209,10 @@ bool Streamer::Initialize()
 
         int setVal = 1;
         setsockopt(_listenSocketFd, SOL_SOCKET, SO_REUSEADDR, &setVal, sizeof(int));
+        if (!_isTcp)
+            setsockopt(_listenSocketFd, SOL_SOCKET, IP_RECVERR,
+               (const void *)&setVal , sizeof(int));
+
     }
 
     // handle ffmpeg start
@@ -236,7 +248,8 @@ bool Streamer::Initialize()
         std::string ffmpegHost = "127.0.0.1";
 
         // need to setup a seperate endpoint for ffmpeg, since the port will differ
-        std::string endpoint = _transport +
+
+        std::string endpoint = std::string("tcp") +
             "://" + ffmpegHost +
             ":" + std::to_string(_ffmpegPort);
 
@@ -259,8 +272,8 @@ bool Streamer::Initialize()
                 _streamEntry.bitRate.c_str(),       // $4
                 nullptr);
         }
-
         _ffmpegSocketFd = socket(AF_INET, SOCK_STREAM, 0);
+
         hostent* server = gethostbyname(ffmpegHost.c_str());
 
         sockaddr_in addr;
@@ -285,7 +298,6 @@ bool Streamer::Initialize()
             usleep(500 * 1e3); // 500ms sleep
         }
     }
-
     _portal->NewStream(_streamEntry);
     return true;
 }
@@ -344,11 +356,31 @@ void Streamer::Run()
     while (true)
     {
         // periodically accept new clients
-        int clientSocket = accept4(_listenSocketFd, NULL, NULL, SOCK_NONBLOCK);
-        if (clientSocket > 0)
+        if (_isTcp) // tcp
         {
-            _clientList.push_back(clientSocket);
-            LOG_INFO("Accepted new client, fd %d", clientSocket);
+            int clientSocket = accept4(_listenSocketFd, NULL, NULL, SOCK_NONBLOCK);
+            if (clientSocket > 0)
+            {
+                _clientList.push_back(clientSocket);
+                LOG_INFO("Accepted new client, fd %d", clientSocket);
+            }
+        }
+
+        else // udp
+        {
+            struct sockaddr_in clientaddr;
+            socklen_t clientlen = sizeof(clientaddr);
+            char buffer[BUFFER_SIZE];
+            int n = recvfrom(_listenSocketFd, buffer, BUFFER_SIZE, 0,
+                             (struct sockaddr *) &clientaddr, &clientlen);
+            clientaddr.sin_port = htons(atoi(buffer));
+            //clientaddr.sin_family = AF_INET;
+            //clientaddr.sin_addr.s_addr = INADDR_ANY;
+            if (n != -1 && Streamer::IsNewClient(clientaddr))
+            {
+                LOG_INFO("Pushing new Client port %d", htons(clientaddr.sin_port));
+                _clientUdpList.push_back(clientaddr);
+            }
         }
 
         usleep(sleepTime * 1e3); // wait a bit so there's some data to send
@@ -378,16 +410,33 @@ void Streamer::Run()
             }
 
             // send data to all clients, remove clients with invalid/closed sockets
-            _clientList.remove_if([buffer](int clientSocket)
+            if (_isTcp)
             {
-                if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
-                {
-                    LOG_INFO("Removing client fd %d from client list", clientSocket);
-                    return true;
-                }
+                _clientList.remove_if([buffer](int clientSocket)
+                                      {
+                                          if (write(clientSocket, buffer, BUFFER_SIZE) < 0)
+                                          {
+                                              LOG_INFO("Removing client fd %d from client list", clientSocket);
+                                              return true;
+                                          }
 
-                return false;
-            });
+                                          return false;
+                                      });
+            }
+            else
+            {
+                _clientUdpList.remove_if([buffer, this](struct sockaddr_in clientaddr) {
+                        int clientlen = sizeof(clientaddr);
+                        if (sendto(_listenSocketFd, buffer, BUFFER_SIZE, 0,
+                                   (struct sockaddr *) &clientaddr, clientlen) < 0)
+                            {
+                                //LOG_INFO("Removing client fd %d from client list", clientSocket);
+                                LOG_INFO("Failed sent to port %d, removing", ntohs(clientaddr.sin_port));
+                                return true;
+                            }
+                        return false;
+                    });
+            }
 
             // break out of send cycle and accept new clients if a tick has passed
             long now = getMSTime();
@@ -410,4 +459,18 @@ void Streamer::PrintUsage()
     LOG_INFO("'--keywords $key1,$key2...,$keyn' adds search keywords to stream");
     LOG_INFO("'--hls $nginx_host'");
     LOG_INFO("'--dash $nginx_host'");
+}
+
+bool Streamer::IsNewClient(sockaddr_in clientaddr)
+{
+    int clientPort = ntohs(clientaddr.sin_port);
+    char *clientIp = inet_ntoa(clientaddr.sin_addr);
+    for (sockaddr_in& addr : _clientUdpList)
+    {
+        int port = ntohs(addr.sin_port);
+        char *ip = inet_ntoa(addr.sin_addr);
+        if (port == clientPort && strcmp(clientIp, ip) == 0)
+            return false;
+    }
+    return true;
 }
