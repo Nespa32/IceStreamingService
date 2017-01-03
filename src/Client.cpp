@@ -209,7 +209,7 @@ void CLIClient::RunCommands()
             // Some stuff for udp
             int udpSocket;
             sockaddr_in udpAddr;
-            int _isTcp = 1;
+            int isTcp = 1;
             socklen_t len;
             //
             std::string streamName;
@@ -220,13 +220,13 @@ void CLIClient::RunCommands()
             {
                 StreamEntry const& entryToPlay = itr->second;
                 { // Check if the transport is udp
-                    _isTcp = 0;
                 char* transport = strdup(entryToPlay.endpoint.c_str());
                 strtok (transport,":/");
                 char* port = strtok (NULL, ":/");
                 char* ip = strtok (NULL, ":/");
                 if (strcmp(transport, "udp") == 0) // UDP
                 {
+                    isTcp = 0;
                     // new port/socket for ffplay to connect to
                     udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
                     bzero((char*)&udpAddr, sizeof(udpAddr));
@@ -265,7 +265,7 @@ void CLIClient::RunCommands()
                 // launch ffplay instance
                 if (fork() == 0)
                 {
-                    if (_isTcp)
+                    if (isTcp)
                     {
                         // but redirect ffplay output to /dev/null
                         int fd = open("/dev/null", O_WRONLY);
